@@ -44,10 +44,10 @@ export class AuthController extends BaseController {
      */
     static async register(request: Request, env: Env, _ctx: ExecutionContext, _routeContext: RouteContext): Promise<Response> {
         try {
-            // Check if OAuth providers are configured - if yes, block email/password registration
-            if (AuthController.hasOAuthProviders(env)) {
+            // Check if email/password auth is explicitly disabled
+            if (env.DISABLE_EMAIL_PASSWORD_AUTH === 'true') {
                 return AuthController.createErrorResponse(
-                    'Email/password registration is not available when OAuth providers are configured. Please use OAuth login instead.',
+                    'Email/password registration is disabled. Please use OAuth login instead.',
                     403
                 );
             }
@@ -59,11 +59,17 @@ export class AuthController extends BaseController {
 
             const validatedData = registerSchema.parse(bodyResult.data);
 
-            if (env.ALLOWED_EMAIL && validatedData.email !== env.ALLOWED_EMAIL) {
-                return AuthController.createErrorResponse(
-                    'Email Whitelisting is enabled. Please use the allowed email to register.',
-                    403
-                );
+            // Optional: Email whitelisting - supports comma-separated list of allowed emails
+            if (env.ALLOWED_EMAIL) {
+                const allowedEmails = env.ALLOWED_EMAIL.split(',').map(e => e.trim().toLowerCase());
+                const userEmail = validatedData.email.toLowerCase();
+                
+                if (!allowedEmails.includes(userEmail)) {
+                    return AuthController.createErrorResponse(
+                        `Email whitelisting is enabled. Allowed emails: ${env.ALLOWED_EMAIL}`,
+                        403
+                    );
+                }
             }
             
             const authService = new AuthService(env);
@@ -99,10 +105,10 @@ export class AuthController extends BaseController {
      */
     static async login(request: Request, env: Env, _ctx: ExecutionContext, _routeContext: RouteContext): Promise<Response> {
         try {
-            // Check if OAuth providers are configured - if yes, block email/password login
-            if (AuthController.hasOAuthProviders(env)) {
+            // Check if email/password auth is explicitly disabled
+            if (env.DISABLE_EMAIL_PASSWORD_AUTH === 'true') {
                 return AuthController.createErrorResponse(
-                    'Email/password login is not available when OAuth providers are configured. Please use OAuth login instead.',
+                    'Email/password login is disabled. Please use OAuth login instead.',
                     403
                 );
             }
@@ -114,11 +120,17 @@ export class AuthController extends BaseController {
 
             const validatedData = loginSchema.parse(bodyResult.data);
 
-            if (env.ALLOWED_EMAIL && validatedData.email !== env.ALLOWED_EMAIL) {
-                return AuthController.createErrorResponse(
-                    'Email Whitelisting is enabled. Please use the allowed email to login.',
-                    403
-                );
+            // Optional: Email whitelisting - supports comma-separated list of allowed emails
+            if (env.ALLOWED_EMAIL) {
+                const allowedEmails = env.ALLOWED_EMAIL.split(',').map(e => e.trim().toLowerCase());
+                const userEmail = validatedData.email.toLowerCase();
+                
+                if (!allowedEmails.includes(userEmail)) {
+                    return AuthController.createErrorResponse(
+                        `Email whitelisting is enabled. Allowed emails: ${env.ALLOWED_EMAIL}`,
+                        403
+                    );
+                }
             }
             
             const authService = new AuthService(env);
@@ -155,17 +167,17 @@ export class AuthController extends BaseController {
     static async logout(request: Request, env: Env, _ctx: ExecutionContext, _routeContext: RouteContext): Promise<Response> {
         try {
             const sessionId = extractSessionId(request);
-			if (sessionId) {
-				try {
-					const sessionService = new SessionService(env);
-					await sessionService.revokeSessionId(sessionId);
-				} catch (error) {
-					this.logger.debug(
-						'Failed to properly logout session',
-						error,
-					);
-				}
-			}
+                        if (sessionId) {
+                                try {
+                                        const sessionService = new SessionService(env);
+                                        await sessionService.revokeSessionId(sessionId);
+                                } catch (error) {
+                                        this.logger.debug(
+                                                'Failed to properly logout session',
+                                                error,
+                                        );
+                                }
+                        }
                         
             const response = AuthController.createSuccessResponse({ 
                 success: true, 
