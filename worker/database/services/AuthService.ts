@@ -523,7 +523,7 @@ export class AuthService extends BaseService {
             
             await this.database.insert(schema.authAttempts).values({
                 identifier: identifier.toLowerCase(),
-                attemptType: attemptType as 'login' | 'register' | 'oauth_google' | 'oauth_github' | 'refresh' | 'reset_password',
+                attemptType: attemptType as 'login' | 'register' | 'oauth_google' | 'oauth_github' | 'refresh' | 'reset_password' | 'email_verification',
                 success: success,
                 ipAddress: requestMetadata.ipAddress
             });
