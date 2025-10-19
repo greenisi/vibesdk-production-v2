@@ -99,7 +99,7 @@
     "r2_buckets": [
       {
         "binding": "TEMPLATES_BUCKET",
-        "bucket_name": "TEMPLATES_BUCKETR2Bucket",
+        "bucket_name": "vibesdk-templates",
         "remote": true
       }
     ],
