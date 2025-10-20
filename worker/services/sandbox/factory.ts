@@ -9,5 +9,5 @@ export function getSandboxService(sessionId: string, agentId: string): BaseSandb
         return new RemoteSandboxServiceClient(sessionId);
     }
     console.log("[getSandboxService] Using sandboxsdk service for sandboxing");
-    return new SandboxSdkClient(sessionId, agentId);
+    return new SandboxSdkClient(sessionId, agentId, env);
 }

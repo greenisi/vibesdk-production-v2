@@ -29,6 +29,7 @@ import {
 } from './sandboxTypes';
 
 import { createObjectLogger } from '../../logger';
+import { env } from 'cloudflare:workers'
 import { BaseSandboxService } from './BaseSandboxService';
 
 import { 
@@ -107,10 +108,8 @@ function getAutoAllocatedSandbox(sessionId: string): string {
 export class SandboxSdkClient extends BaseSandboxService {
     private sandbox: SandboxType;
     private metadataCache = new Map<string, InstanceMetadata>();
-    private env: Env;
 
-    constructor(sandboxId: string, agentId: string, env: Env) {
-        this.env = env;
+    constructor(sandboxId: string, agentId: string) {
         if (env.ALLOCATION_STRATEGY === AllocationStrategy.MANY_TO_ONE) {
             sandboxId = getAutoAllocatedSandbox(sandboxId);
         }
@@ -242,7 +241,7 @@ export class SandboxSdkClient extends BaseSandboxService {
         // Fetch the zip file from R2
         const downloadUrl = downloadDir ? `${downloadDir}/${templateName}.zip` : `${templateName}.zip`;
         this.logger.info(`Fetching object: ${downloadUrl} from R2 bucket`);
-        const r2Object = await this.env.TEMPLATES_BUCKET.get(downloadUrl);
+        const r2Object = await env.TEMPLATES_BUCKET.get(downloadUrl);
           
         if (!r2Object) {
             throw new Error(`Object '${downloadUrl}' not found in bucket`);
