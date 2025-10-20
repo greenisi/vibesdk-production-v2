@@ -1,4 +1,4 @@
-import { getSandbox, Sandbox, ExecuteResponse, parseSSEStream, LogEvent } from '@cloudflare/sandbox';
+import { Sandbox, ExecuteResponse, parseSSEStream, LogEvent } from '@cloudflare/sandbox';
 
 import {
     TemplateDetailsResponse,
@@ -140,7 +140,10 @@ export class SandboxSdkClient extends BaseSandboxService {
 
     private getSandbox(): SandboxType {
         if (!this.sandbox) {
-            this.sandbox = getSandbox(this.env.Sandbox, this.sandboxId);
+            // Use direct Durable Object stub instead of getSandbox() helper
+            // This is necessary when script_name is specified in wrangler.jsonc
+            const id = this.env.Sandbox.idFromName(this.sandboxId);
+            this.sandbox = this.env.Sandbox.get(id);
         }
         return this.sandbox;
     }
