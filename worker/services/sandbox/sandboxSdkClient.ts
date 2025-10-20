@@ -49,8 +49,229 @@ import { GitHubService } from '../github/GitHubService';
 import { getPreviewDomain } from '../../utils/urls';
 import { isDev } from 'worker/utils/envs';
 import { FileOutputType } from 'worker/agents/schemas';
-// Export the Sandbox class in your Worker
-export { Sandbox as UserAppSandboxService, Sandbox as DeployerService} from "@cloudflare/sandbox";
+
+/**
+ * UserAppSandboxService - Wrapper class for Sandbox that properly exposes RPC methods
+ * 
+ * This wrapper is necessary because Cloudflare Workers RPC requires methods to be
+ * explicitly defined on the Durable Object class. Simply re-exporting the Sandbox
+ * class doesn't expose its methods to the RPC system.
+ */
+export class UserAppSandboxService extends Sandbox<Env> {
+    constructor(ctx: DurableObjectState, env: Env) {
+        super(ctx, env);
+    }
+
+    // Explicitly expose all RPC methods by delegating to parent class
+
+    // Core execution methods
+    override async exec(command: string, options?: Parameters<Sandbox<Env>['exec']>[1]) {
+        return super.exec(command, options);
+    }
+
+    override async execStream(command: string, options?: Parameters<Sandbox<Env>['execStream']>[1]) {
+        return super.execStream(command, options);
+    }
+
+    // Process management methods
+    override async startProcess(command: string, options?: Parameters<Sandbox<Env>['startProcess']>[1]) {
+        return super.startProcess(command, options);
+    }
+
+    override async listProcesses() {
+        return super.listProcesses();
+    }
+
+    override async getProcess(id: string) {
+        return super.getProcess(id);
+    }
+
+    override async killProcess(id: string, signal?: string) {
+        return super.killProcess(id, signal);
+    }
+
+    override async killAllProcesses() {
+        return super.killAllProcesses();
+    }
+
+    override async cleanupCompletedProcesses() {
+        return super.cleanupCompletedProcesses();
+    }
+
+    override async getProcessLogs(id: string) {
+        return super.getProcessLogs(id);
+    }
+
+    override async streamProcessLogs(processId: string, options?: { signal?: AbortSignal }) {
+        return super.streamProcessLogs(processId, options);
+    }
+
+    // File system methods
+    override async gitCheckout(repoUrl: string, options: { branch?: string; targetDir?: string }) {
+        return super.gitCheckout(repoUrl, options);
+    }
+
+    override async mkdir(path: string, options?: { recursive?: boolean }) {
+        return super.mkdir(path, options);
+    }
+
+    override async writeFile(path: string, content: string, options?: { encoding?: string }) {
+        return super.writeFile(path, content, options);
+    }
+
+    override async deleteFile(path: string) {
+        return super.deleteFile(path);
+    }
+
+    override async renameFile(oldPath: string, newPath: string) {
+        return super.renameFile(oldPath, newPath);
+    }
+
+    override async moveFile(sourcePath: string, destinationPath: string) {
+        return super.moveFile(sourcePath, destinationPath);
+    }
+
+    override async readFile(path: string, options?: { encoding?: string }) {
+        return super.readFile(path, options);
+    }
+
+    // Port exposure methods
+    override async exposePort(port: number, options: { name?: string; hostname: string }) {
+        return super.exposePort(port, options);
+    }
+
+    override async unexposePort(port: number) {
+        return super.unexposePort(port);
+    }
+
+    override async getExposedPorts(hostname: string) {
+        return super.getExposedPorts(hostname);
+    }
+
+    // Configuration methods
+    override async setSandboxName(name: string) {
+        return super.setSandboxName(name);
+    }
+
+    override async setEnvVars(envVars: Record<string, string>) {
+        return super.setEnvVars(envVars);
+    }
+
+    // Fetch method for HTTP requests
+    override async fetch(request: Request) {
+        return super.fetch(request);
+    }
+}
+
+/**
+ * DeployerService - Wrapper class for Sandbox used for deployment operations
+ * Uses the same wrapper pattern as UserAppSandboxService
+ */
+export class DeployerService extends Sandbox<Env> {
+    constructor(ctx: DurableObjectState, env: Env) {
+        super(ctx, env);
+    }
+
+    // Explicitly expose all RPC methods by delegating to parent class
+
+    // Core execution methods
+    override async exec(command: string, options?: Parameters<Sandbox<Env>['exec']>[1]) {
+        return super.exec(command, options);
+    }
+
+    override async execStream(command: string, options?: Parameters<Sandbox<Env>['execStream']>[1]) {
+        return super.execStream(command, options);
+    }
+
+    // Process management methods
+    override async startProcess(command: string, options?: Parameters<Sandbox<Env>['startProcess']>[1]) {
+        return super.startProcess(command, options);
+    }
+
+    override async listProcesses() {
+        return super.listProcesses();
+    }
+
+    override async getProcess(id: string) {
+        return super.getProcess(id);
+    }
+
+    override async killProcess(id: string, signal?: string) {
+        return super.killProcess(id, signal);
+    }
+
+    override async killAllProcesses() {
+        return super.killAllProcesses();
+    }
+
+    override async cleanupCompletedProcesses() {
+        return super.cleanupCompletedProcesses();
+    }
+
+    override async getProcessLogs(id: string) {
+        return super.getProcessLogs(id);
+    }
+
+    override async streamProcessLogs(processId: string, options?: { signal?: AbortSignal }) {
+        return super.streamProcessLogs(processId, options);
+    }
+
+    // File system methods
+    override async gitCheckout(repoUrl: string, options: { branch?: string; targetDir?: string }) {
+        return super.gitCheckout(repoUrl, options);
+    }
+
+    override async mkdir(path: string, options?: { recursive?: boolean }) {
+        return super.mkdir(path, options);
+    }
+
+    override async writeFile(path: string, content: string, options?: { encoding?: string }) {
+        return super.writeFile(path, content, options);
+    }
+
+    override async deleteFile(path: string) {
+        return super.deleteFile(path);
+    }
+
+    override async renameFile(oldPath: string, newPath: string) {
+        return super.renameFile(oldPath, newPath);
+    }
+
+    override async moveFile(sourcePath: string, destinationPath: string) {
+        return super.moveFile(sourcePath, destinationPath);
+    }
+
+    override async readFile(path: string, options?: { encoding?: string }) {
+        return super.readFile(path, options);
+    }
+
+    // Port exposure methods
+    override async exposePort(port: number, options: { name?: string; hostname: string }) {
+        return super.exposePort(port, options);
+    }
+
+    override async unexposePort(port: number) {
+        return super.unexposePort(port);
+    }
+
+    override async getExposedPorts(hostname: string) {
+        return super.getExposedPorts(hostname);
+    }
+
+    // Configuration methods
+    override async setSandboxName(name: string) {
+        return super.setSandboxName(name);
+    }
+
+    override async setEnvVars(envVars: Record<string, string>) {
+        return super.setEnvVars(envVars);
+    }
+
+    // Fetch method for HTTP requests
+    override async fetch(request: Request) {
+        return super.fetch(request);
+    }
+}
 
 
 interface InstanceMetadata {
