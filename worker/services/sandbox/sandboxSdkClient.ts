@@ -1961,7 +1961,7 @@ export class SandboxSdkClient extends BaseSandboxService {
             }
             
             // Step 8: Determine deployment URL
-            const deployedUrl = `${this.getProtocolForHost()}://${projectName}.${getPreviewDomain(env)}`;
+            const deployedUrl = `${this.getProtocolForHost()}://${projectName}.${getPreviewDomain(this.env)}`;
             const deploymentId = projectName;
             
             this.logger.info('Deployment successful', { 
@@ -2056,7 +2056,7 @@ export class SandboxSdkClient extends BaseSandboxService {
      */
     private getProtocolForHost(): string {
         // Simple heuristic - use https for production-like domains
-        const previewDomain = getPreviewDomain(env);
+        const previewDomain = getPreviewDomain(this.env);
         if (previewDomain.includes('localhost') || previewDomain.includes('127.0.0.1')) {
             return 'http';
         }
