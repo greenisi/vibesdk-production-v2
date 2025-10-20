@@ -84,15 +84,18 @@
                 "bindings": [
                         {
                                 "class_name": "CodeGeneratorAgent",
-                                "name": "CodeGenObject"
+                                "name": "CodeGenObject",
+                                "script_name": "vibesdk-production-v2"
                         },
             {
                 "class_name": "UserAppSandboxService",
-                "name": "Sandbox"
+                "name": "Sandbox",
+                                "script_name": "vibesdk-production-v2"
             },
             {
                 "class_name": "DORateLimitStore",
-                "name": "DORateLimitStore"
+                "name": "DORateLimitStore",
+                                "script_name": "vibesdk-production-v2"
             }
                 ]
         },
