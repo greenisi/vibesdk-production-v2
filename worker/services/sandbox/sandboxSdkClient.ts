@@ -1525,18 +1525,28 @@ export class SandboxSdkClient extends BaseSandboxService {
             const sandbox = this.getSandbox();
 
             if (!filePaths) {
-                // Read '.important_files.json' in instance directory
-                const importantFiles = await sandbox.exec(`cd ${templateOrInstanceId} && jq -r '.[]' .important_files.json | while read -r path; do if [ -d "$path" ]; then find "$path" -type f; elif [ -f "$path" ]; then echo "$path"; fi; done`);
+                // Try to read '.important_files.json' in instance directory
+                const importantFiles = await sandbox.exec(`cd ${templateOrInstanceId} && if [ -f .important_files.json ]; then jq -r '.[]' .important_files.json | while read -r path; do if [ -d "$path" ]; then find "$path" -type f; elif [ -f "$path" ]; then echo "$path"; fi; done; fi`);
                 this.logger.info(`Read important files: stdout: ${importantFiles.stdout}, stderr: ${importantFiles.stderr}`);
                 filePaths = importantFiles.stdout.split('\n').filter(path => path);
-                if (!filePaths) {
-                    return {
-                        success: false,
-                        files: [],
-                        error: 'Failed to read important files'
-                    };
+                
+                // If .important_files.json doesn't exist or is empty, fall back to reading key files
+                if (!filePaths || filePaths.length === 0) {
+                    this.logger.warn('.important_files.json missing or empty, falling back to reading key template files');
+                    // Read essential files that are typically needed for templates
+                    const fallbackFiles = await sandbox.exec(`cd ${templateOrInstanceId} && find . -maxdepth 2 -type f \\( -name "package.json" -o -name "*.config.*" -o -name "README.md" -o -name "wrangler.jsonc" \\) | sed 's|^./||'`);
+                    filePaths = fallbackFiles.stdout.split('\n').filter(path => path);
+                    
+                    if (!filePaths || filePaths.length === 0) {
+                        this.logger.warn('No files found in template, returning empty file list');
+                        return {
+                            success: true,
+                            files: [],
+                            error: undefined
+                        };
+                    }
                 }
-                this.logger.info(`Successfully read important files: ${filePaths}`);
+                this.logger.info(`Successfully identified files to read: ${filePaths.length} files`);
                 applyFilter = true;
             }
 
