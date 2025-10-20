@@ -84,7 +84,7 @@ export enum AllocationStrategy {
     ONE_TO_ONE = 'one_to_one',
 }
   
-function getAutoAllocatedSandbox(sessionId: string): string {
+function getAutoAllocatedSandbox(sessionId: string, env: Env): string {
     // Distribute sessions across available containers using consistent hashing
     // Convert session ID to hash for deterministic assignment
     let hash = 0;
@@ -110,11 +110,11 @@ export class SandboxSdkClient extends BaseSandboxService {
     private env: Env;
 
     constructor(sandboxId: string, agentId: string, env: Env) {
-        this.env = env;
         if (env.ALLOCATION_STRATEGY === AllocationStrategy.MANY_TO_ONE) {
-            sandboxId = getAutoAllocatedSandbox(sandboxId);
+            sandboxId = getAutoAllocatedSandbox(sandboxId, env);
         }
         super(sandboxId);
+        this.env = env;
         this.sandbox = this.getSandbox();
         
         this.logger = createObjectLogger(this, 'SandboxSdkClient');
@@ -140,7 +140,7 @@ export class SandboxSdkClient extends BaseSandboxService {
 
     private getSandbox(): SandboxType {
         if (!this.sandbox) {
-            this.sandbox = getSandbox(env.Sandbox, this.sandboxId);
+            this.sandbox = getSandbox(this.env.Sandbox, this.sandboxId);
         }
         return this.sandbox;
     }
@@ -866,7 +866,7 @@ export class SandboxSdkClient extends BaseSandboxService {
             try {
                 const wranglerConfigFile = await sandbox.readFile(`${instanceId}/wrangler.jsonc`);
                 if (wranglerConfigFile.success) {
-                    await env.VibecoderStore.put(this.getWranglerKVKey(instanceId), wranglerConfigFile.content);
+                    await this.env.VibecoderStore.put(this.getWranglerKVKey(instanceId), wranglerConfigFile.content);
                     this.logger.info('Wrangler configuration stored in KV', { instanceId });
                 } else {
                     this.logger.warn('Could not read wrangler.jsonc for KV storage', { instanceId });
@@ -881,7 +881,7 @@ export class SandboxSdkClient extends BaseSandboxService {
 
             // If on local development, start cloudflared tunnel
             let tunnelUrlPromise = Promise.resolve('');
-            if (isDev(env) || env.USE_TUNNEL_FOR_PREVIEW) {
+            if (isDev(this.env) || this.env.USE_TUNNEL_FOR_PREVIEW) {
                 this.logger.info('Starting cloudflared tunnel for local development', { instanceId });
                 tunnelUrlPromise = this.startCloudflaredTunnel(instanceId, allocatedPort);
             }
@@ -907,17 +907,17 @@ export class SandboxSdkClient extends BaseSandboxService {
                     this.logger.info('Instance created successfully', { instanceId, processId, port: allocatedPort });
                         
                     // Expose the same port for preview URL
-                    const previewResult = await sandbox.exposePort(allocatedPort, { hostname: getPreviewDomain(env) });
+                    const previewResult = await sandbox.exposePort(allocatedPort, { hostname: getPreviewDomain(this.env) });
                     let previewURL = previewResult.url;
-                    if (!isDev(env)) {
-                        const previewDomain = getPreviewDomain(env);
+                    if (!isDev(this.env)) {
+                        const previewDomain = getPreviewDomain(this.env);
                         if (previewDomain) {
                             // Replace CUSTOM_DOMAIN with previewDomain in previewURL
-                            previewURL = previewURL.replace(env.CUSTOM_DOMAIN, previewDomain);
+                            previewURL = previewURL.replace(this.env.CUSTOM_DOMAIN, previewDomain);
                         }
                     }
 
-                    if(env.USE_TUNNEL_FOR_PREVIEW) {
+                    if(this.env.USE_TUNNEL_FOR_PREVIEW) {
                         this.logger.info('Using tunnel url instead for preview as configured', { instanceId, tunnelURL });
                         previewURL = tunnelURL;
                     }
@@ -977,7 +977,7 @@ export class SandboxSdkClient extends BaseSandboxService {
                 this.logger.info('Configuring environment variables', { envVars: Object.keys(localEnvVars) });
                 sandbox.setEnvVars(localEnvVars);
             }
-            if (env.ALLOCATION_STRATEGY === 'one_to_one') {
+            if (this.env.ALLOCATION_STRATEGY === 'one_to_one') {
                 // Multiple instances shouldn't exist in the same sandbox
 
                 // If there are already instances running in sandbox, log them
@@ -1811,8 +1811,8 @@ export class SandboxSdkClient extends BaseSandboxService {
             const projectName = metadata?.projectName || instanceId;
             
             // Get credentials from environment (secure - no exposure to external processes)
-            const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-            const apiToken = env.CLOUDFLARE_API_TOKEN;
+            const accountId = this.env.CLOUDFLARE_ACCOUNT_ID;
+            const apiToken = this.env.CLOUDFLARE_API_TOKEN;
             
             if (!accountId || !apiToken) {
                 throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in environment');
@@ -1837,7 +1837,7 @@ export class SandboxSdkClient extends BaseSandboxService {
             
             // Step 2: Parse wrangler config from KV
             this.logger.info('Reading wrangler configuration from KV');
-            let wranglerConfigContent = await env.VibecoderStore.get(this.getWranglerKVKey(instanceId));
+            let wranglerConfigContent = await this.env.VibecoderStore.get(this.getWranglerKVKey(instanceId));
             
             if (!wranglerConfigContent) {
                 // This should never happen unless KV itself has some issues
@@ -1944,12 +1944,12 @@ export class SandboxSdkClient extends BaseSandboxService {
             
             // Step 7: Deploy using pure function
             this.logger.info('Deploying to Cloudflare');
-            if ('DISPATCH_NAMESPACE' in env) {
-                this.logger.info('Using dispatch namespace', { dispatchNamespace: env.DISPATCH_NAMESPACE });
+            if ('DISPATCH_NAMESPACE' in this.env) {
+                this.logger.info('Using dispatch namespace', { dispatchNamespace: this.env.DISPATCH_NAMESPACE });
                 await deployToDispatch(
                     {
                         ...deployConfig,
-                        dispatchNamespace: env.DISPATCH_NAMESPACE as string
+                        dispatchNamespace: this.env.DISPATCH_NAMESPACE as string
                     },
                     fileContents,
                     additionalModules,
