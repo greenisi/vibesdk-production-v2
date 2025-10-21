@@ -110,7 +110,22 @@ export class CodingAgentController extends BaseController {
                 modelConfigsCount: Object.keys(userModelConfigs).length,
             });
 
-            const { sandboxSessionId, templateDetails, selection } = await getTemplateForQuery(env, inferenceContext, query, body.images, this.logger);
+            let sandboxSessionId: string;
+            let templateDetails: any;
+            let selection: any;
+            
+            try {
+                const result = await getTemplateForQuery(env, inferenceContext, query, body.images, this.logger);
+                sandboxSessionId = result.sandboxSessionId;
+                templateDetails = result.templateDetails;
+                selection = result.selection;
+            } catch (error) {
+                this.logger.error('Failed to get template for query', error);
+                return CodingAgentController.createErrorResponse(
+                    `Failed to initialize code generation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                    500
+                );
+            }
 
             const websocketUrl = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}/api/agent/${agentId}/ws`;
             const httpStatusUrl = `${url.origin}/api/agent/${agentId}`;

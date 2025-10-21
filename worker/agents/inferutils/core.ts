@@ -172,12 +172,12 @@ function optimizeTextContent(content: string): string {
 
     // // Convert 4-space indentation to 2-space for non-Python/YAML content
     // content = content.replace(/^( {4})+/gm, (match) =>
-    // 	'  '.repeat(match.length / 4),
+    //  '  '.repeat(match.length / 4),
     // );
 
     // // Convert 8-space indentation to 2-space
     // content = content.replace(/^( {8})+/gm, (match) =>
-    // 	'  '.repeat(match.length / 8),
+    //  '  '.repeat(match.length / 8),
     // );
     // 4. Remove leading/trailing whitespace from the entire content
     // (but preserve internal structure)
@@ -199,6 +199,7 @@ export async function buildGatewayUrl(env: Env, providerOverride?: AIGatewayProv
                 // Add 'providerOverride' as a segment to the URL
                 const cleanPathname = url.pathname.replace(/\/$/, ''); // Remove trailing slash
                 url.pathname = providerOverride ? `${cleanPathname}/${providerOverride}` : `${cleanPathname}/compat`;
+                console.log(`Using CLOUDFLARE_AI_GATEWAY_URL: ${url.toString()}`);
                 return url.toString();
             }
         } catch (error) {
@@ -208,9 +209,25 @@ export async function buildGatewayUrl(env: Env, providerOverride?: AIGatewayProv
     }
     
     // Build the url via bindings
-    const gateway = env.AI.gateway(env.CLOUDFLARE_AI_GATEWAY);
-    const baseUrl = providerOverride ? await gateway.getUrl(providerOverride) : `${await gateway.getUrl()}compat`;
-    return baseUrl;
+    try {
+        console.log(`Building gateway URL using AI binding with gateway: ${env.CLOUDFLARE_AI_GATEWAY}`);
+        
+        if (!env.AI) {
+            throw new Error('AI binding is not available. Please ensure the AI binding is properly configured in wrangler.jsonc');
+        }
+        
+        if (!env.CLOUDFLARE_AI_GATEWAY) {
+            throw new Error('CLOUDFLARE_AI_GATEWAY environment variable is not set');
+        }
+        
+        const gateway = env.AI.gateway(env.CLOUDFLARE_AI_GATEWAY);
+        const baseUrl = providerOverride ? await gateway.getUrl(providerOverride) : `${await gateway.getUrl()}compat`;
+        console.log(`Successfully built gateway URL: ${baseUrl}`);
+        return baseUrl;
+    } catch (error) {
+        console.error('Error building gateway URL:', error);
+        throw new Error(`Failed to build AI Gateway URL: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 function isValidApiKey(apiKey: string): boolean {
@@ -247,8 +264,16 @@ async function getApiKey(provider: string, env: Env, _userId: string): Promise<s
     
     // Check if apiKey is empty or undefined and is valid
     if (!isValidApiKey(apiKey)) {
+        console.log(`No valid API key found for ${envKey}, falling back to CLOUDFLARE_AI_GATEWAY_TOKEN`);
         apiKey = env.CLOUDFLARE_AI_GATEWAY_TOKEN;
+        
+        if (!isValidApiKey(apiKey)) {
+            throw new Error(`No valid API key found for provider "${provider}". Please configure ${envKey} or CLOUDFLARE_AI_GATEWAY_TOKEN in your Cloudflare Worker secrets.`);
+        }
+    } else {
+        console.log(`Using API key from ${envKey}`);
     }
+    
     return apiKey;
 }
 
