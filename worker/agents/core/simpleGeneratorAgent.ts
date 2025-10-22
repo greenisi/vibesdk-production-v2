@@ -394,7 +394,7 @@ export class SimpleCodeGeneratorAgent extends Agent<Env, CodeGenState> {
     getSandboxServiceClient(): BaseSandboxService {
         if (this.sandboxServiceClient === undefined) {
             this.logger().info('Initializing sandbox service client');
-            this.sandboxServiceClient = getSandboxService(this.getSessionId(), this.getAgentId());
+            this.sandboxServiceClient = getSandboxService(this.getSessionId(), this.getAgentId(), this.env);
         }
         return this.sandboxServiceClient;
     }

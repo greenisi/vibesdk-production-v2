@@ -33,7 +33,6 @@ import {
     GitHubPushResponseSchema,
 } from './sandboxTypes';
 import { BaseSandboxService } from "./BaseSandboxService";
-import { env } from 'cloudflare:workers'
 import z from 'zod';
 import { FileOutputType } from 'worker/agents/schemas';
 
@@ -48,10 +47,16 @@ export async function runnerFetch(url: string, method: 'GET' | 'POST' | 'DELETE'
 export class RemoteSandboxServiceClient extends BaseSandboxService{
     private static sandboxServiceUrl: string;
     private static token: string;
+    private static initialized: boolean = false;
 
     static init(sandboxServiceUrl: string, token: string) {
         RemoteSandboxServiceClient.sandboxServiceUrl = sandboxServiceUrl;
         RemoteSandboxServiceClient.token = token;
+        RemoteSandboxServiceClient.initialized = true;
+    }
+
+    static isInitialized(): boolean {
+        return RemoteSandboxServiceClient.initialized;
     }
 
     constructor(sandboxId: string) {
@@ -246,5 +251,3 @@ export class RemoteSandboxServiceClient extends BaseSandboxService{
         return this.makeRequest('/logs', 'POST', undefined, { logName, log });
     }
 }
-
-RemoteSandboxServiceClient.init(env.SANDBOX_SERVICE_URL, env.SANDBOX_SERVICE_API_KEY);
