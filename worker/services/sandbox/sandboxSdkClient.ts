@@ -465,36 +465,73 @@ export class SandboxSdkClient extends BaseSandboxService {
     async downloadTemplate(templateName: string, downloadDir?: string) : Promise<ArrayBuffer> {
         // Fetch the zip file from R2
         const downloadUrl = downloadDir ? `${downloadDir}/${templateName}.zip` : `${templateName}.zip`;
-        this.logger.info(`Fetching object: ${downloadUrl} from R2 bucket`);
+        this.logger.info(`[R2_DOWNLOAD] Fetching object from R2 bucket:`, {
+            url: downloadUrl,
+            bucketName: 'TEMPLATES_BUCKET'
+        });
+        
         const r2Object = await this.env.TEMPLATES_BUCKET.get(downloadUrl);
           
         if (!r2Object) {
+            this.logger.error(`[R2_DOWNLOAD] Object not found in R2 bucket:`, { url: downloadUrl });
             throw new Error(`Object '${downloadUrl}' not found in bucket`);
         }
     
         const zipData = await r2Object.arrayBuffer();
     
-        this.logger.info(`Downloaded zip file (${zipData.byteLength} bytes)`);
+        this.logger.info(`[R2_DOWNLOAD] Successfully downloaded zip file:`, {
+            url: downloadUrl,
+            sizeBytes: zipData.byteLength,
+            sizeMB: (zipData.byteLength / (1024 * 1024)).toFixed(2)
+        });
         return zipData;
     }
 
     private async ensureTemplateExists(templateName: string, downloadDir?: string, isInstance: boolean = false) {
         if (!await this.checkTemplateExists(templateName)) {
             // Download and extract template
-            this.logger.info(`Template doesnt exist, Downloading template from: ${templateName}`);
+            this.logger.info(`[TEMPLATE_SETUP] Template doesn't exist, downloading template: ${templateName}`);
             
             const zipData = await this.downloadTemplate(templateName, downloadDir);
+            this.logger.info(`[TEMPLATE_SETUP] Downloaded ${zipData.byteLength} bytes for template: ${templateName}`);
+            
             // Stream zip to sandbox in safe base64 chunks and write directly as binary
             await this.writeBinaryFileViaBase64(`${templateName}.zip`, zipData);
-            this.logger.info(`Wrote zip file to sandbox in chunks: ${templateName}.zip`);
+            this.logger.info(`[TEMPLATE_SETUP] Wrote zip file to sandbox: ${templateName}.zip`);
             
-            const setupResult = await this.getSandbox().exec(`unzip -o -q ${templateName}.zip -d ${isInstance ? '.' : templateName}`);
+            // Extract the template
+            const extractDir = isInstance ? '.' : templateName;
+            this.logger.info(`[TEMPLATE_SETUP] Extracting to directory: ${extractDir}`);
+            const setupResult = await this.getSandbox().exec(`unzip -o -q ${templateName}.zip -d ${extractDir}`);
         
             if (setupResult.exitCode !== 0) {
+                this.logger.error(`[TEMPLATE_SETUP] Failed to extract template`, { 
+                    exitCode: setupResult.exitCode, 
+                    stderr: setupResult.stderr,
+                    stdout: setupResult.stdout
+                });
                 throw new Error(`Failed to download/extract template: ${setupResult.stderr}`);
             }
+            
+            this.logger.info(`[TEMPLATE_SETUP] Template extracted successfully`);
+            
+            // Verify the directory structure after extraction
+            const lsResult = await this.getSandbox().exec(`ls -la ${templateName}/`);
+            this.logger.info(`[TEMPLATE_SETUP] Directory listing after extraction:`, {
+                exitCode: lsResult.exitCode,
+                stdout: lsResult.stdout,
+                stderr: lsResult.stderr
+            });
+            
+            // Check if important files exist
+            const checkFiles = await this.getSandbox().exec(`cd ${templateName} && ls -la .important_files.json package.json 2>&1`);
+            this.logger.info(`[TEMPLATE_SETUP] Important files check:`, {
+                exitCode: checkFiles.exitCode,
+                output: checkFiles.stdout || checkFiles.stderr
+            });
+            
         } else {
-            this.logger.info(`Template already exists`);
+            this.logger.info(`[TEMPLATE_SETUP] Template already exists: ${templateName}`);
         }
     }
 
@@ -1522,21 +1559,71 @@ export class SandboxSdkClient extends BaseSandboxService {
 
     async getFiles(templateOrInstanceId: string, filePaths?: string[], applyFilter: boolean = true, redactedFiles?: string[]): Promise<GetFilesResponse> {
         try {
+            this.logger.info(`[GET_FILES] Starting getFiles for: ${templateOrInstanceId}`, {
+                hasFilePaths: !!filePaths,
+                filePathsCount: filePaths?.length,
+                applyFilter
+            });
+            
             const sandbox = this.getSandbox();
 
             if (!filePaths) {
-                // Read '.important_files.json' in instance directory
-                const importantFiles = await sandbox.exec(`cd ${templateOrInstanceId} && jq -r '.[]' .important_files.json | while read -r path; do if [ -d "$path" ]; then find "$path" -type f; elif [ -f "$path" ]; then echo "$path"; fi; done`);
-                this.logger.info(`Read important files: stdout: ${importantFiles.stdout}, stderr: ${importantFiles.stderr}`);
-                filePaths = importantFiles.stdout.split('\n').filter(path => path);
-                if (!filePaths) {
+                this.logger.info(`[GET_FILES] No file paths provided, reading .important_files.json`);
+                
+                // First check if the directory and important_files.json exist
+                const checkDir = await sandbox.exec(`test -d ${templateOrInstanceId} && echo "exists" || echo "missing"`);
+                this.logger.info(`[GET_FILES] Directory check:`, {
+                    exitCode: checkDir.exitCode,
+                    output: checkDir.stdout.trim(),
+                    stderr: checkDir.stderr
+                });
+                
+                if (checkDir.stdout.trim() !== "exists") {
+                    this.logger.error(`[GET_FILES] Directory does not exist: ${templateOrInstanceId}`);
                     return {
                         success: false,
                         files: [],
-                        error: 'Failed to read important files'
+                        error: `Directory does not exist: ${templateOrInstanceId}`
                     };
                 }
-                this.logger.info(`Successfully read important files: ${filePaths}`);
+                
+                const checkImportantFiles = await sandbox.exec(`test -f ${templateOrInstanceId}/.important_files.json && echo "exists" || echo "missing"`);
+                this.logger.info(`[GET_FILES] Important files check:`, {
+                    exitCode: checkImportantFiles.exitCode,
+                    output: checkImportantFiles.stdout.trim(),
+                    stderr: checkImportantFiles.stderr
+                });
+                
+                if (checkImportantFiles.stdout.trim() !== "exists") {
+                    this.logger.error(`[GET_FILES] .important_files.json not found in: ${templateOrInstanceId}`);
+                    return {
+                        success: false,
+                        files: [],
+                        error: `.important_files.json not found in ${templateOrInstanceId}`
+                    };
+                }
+                
+                // Read '.important_files.json' in instance directory
+                const importantFiles = await sandbox.exec(`cd ${templateOrInstanceId} && jq -r '.[]' .important_files.json | while read -r path; do if [ -d "$path" ]; then find "$path" -type f; elif [ -f "$path" ]; then echo "$path"; fi; done`);
+                this.logger.info(`[GET_FILES] Read important files result:`, {
+                    exitCode: importantFiles.exitCode,
+                    stdout: importantFiles.stdout,
+                    stderr: importantFiles.stderr
+                });
+                
+                filePaths = importantFiles.stdout.split('\n').filter(path => path);
+                if (!filePaths || filePaths.length === 0) {
+                    this.logger.error(`[GET_FILES] No file paths found in .important_files.json`);
+                    return {
+                        success: false,
+                        files: [],
+                        error: 'Failed to read important files or no files specified'
+                    };
+                }
+                this.logger.info(`[GET_FILES] Successfully parsed important files:`, {
+                    count: filePaths.length,
+                    files: filePaths
+                });
                 applyFilter = true;
             }
 
@@ -1558,14 +1645,36 @@ export class SandboxSdkClient extends BaseSandboxService {
             const files = [];
             const errors = [];
 
+            this.logger.info(`[GET_FILES] Starting to read ${filePaths.length} files`);
+
             const readPromises = filePaths.map(async (filePath) => {
                 try {
-                    const result = await sandbox.readFile(`${templateOrInstanceId}/${filePath}`);
+                    const fullPath = `${templateOrInstanceId}/${filePath}`;
+                    this.logger.info(`[GET_FILES] Reading file: ${fullPath}`);
+                    
+                    // First check if file exists
+                    const checkFile = await sandbox.exec(`test -f ${fullPath} && echo "exists" || echo "missing"`);
+                    if (checkFile.stdout.trim() !== "exists") {
+                        this.logger.warn(`[GET_FILES] File does not exist: ${fullPath}`);
+                        return {
+                            result: null,
+                            filePath,
+                            error: new Error(`File does not exist: ${fullPath}`)
+                        };
+                    }
+                    
+                    const result = await sandbox.readFile(fullPath);
+                    this.logger.info(`[GET_FILES] File read result:`, {
+                        filePath,
+                        success: result?.success,
+                        hasContent: !!result?.content
+                    });
                     return {
                         result,
                         filePath
                     };
                 } catch (error) {
+                    this.logger.error(`[GET_FILES] Error reading file: ${filePath}`, error);
                     return {
                         result: null,
                         filePath,
@@ -1575,32 +1684,43 @@ export class SandboxSdkClient extends BaseSandboxService {
             });
         
             const readResults = await Promise.allSettled(readPromises);
+            this.logger.info(`[GET_FILES] Completed reading files`, {
+                totalAttempts: readResults.length,
+                fulfilled: readResults.filter(r => r.status === 'fulfilled').length,
+                rejected: readResults.filter(r => r.status === 'rejected').length
+            });
         
             for (const readResult of readResults) {
                 if (readResult.status === 'fulfilled') {
-                    const { result, filePath } = readResult.value;
+                    const { result, filePath, error } = readResult.value;
                     if (result && result.success) {
                         files.push({
                             filePath: filePath,
                             fileContents: (applyFilter && redactedPaths.has(filePath)) ? '[REDACTED]' : result.content
                         });
                         
-                        this.logger.info('File read successfully', { filePath });
+                        this.logger.info(`[GET_FILES] ✓ File read successfully: ${filePath}`);
                     } else {
-                        this.logger.error('File read failed', { filePath });
+                        this.logger.error(`[GET_FILES] ✗ File read failed: ${filePath}`, { error });
                         errors.push({
                             file: filePath,
-                            error: 'Failed to read file'
+                            error: error ? (error instanceof Error ? error.message : String(error)) : 'Failed to read file'
                         });
                     }
                 } else {
-                    this.logger.error(`Promise rejected for file read`);
+                    this.logger.error(`[GET_FILES] ✗ Promise rejected for file read`, readResult.reason);
                     errors.push({
                         file: 'unknown',
-                        error: 'Promise rejected'
+                        error: `Promise rejected: ${readResult.reason instanceof Error ? readResult.reason.message : String(readResult.reason)}`
                     });
                 }
             }
+
+            this.logger.info(`[GET_FILES] Final result:`, {
+                successfulFiles: files.length,
+                failedFiles: errors.length,
+                totalAttempts: filePaths.length
+            });
 
             return {
                 success: true,
@@ -1608,7 +1728,7 @@ export class SandboxSdkClient extends BaseSandboxService {
                 errors: errors.length > 0 ? errors : undefined
             };
         } catch (error) {
-            this.logger.error('getFiles', error, { templateOrInstanceId });
+            this.logger.error('[GET_FILES] Exception in getFiles', error, { templateOrInstanceId });
             return {
                 success: false,
                 files: [],
